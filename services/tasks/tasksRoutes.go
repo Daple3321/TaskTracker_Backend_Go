@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"gameroll.com/ServerLearn/utils"
 )
 
+var tasksMu sync.Mutex
 var tasks []Task = []Task{
 	{Name: "TEST TASK", Description: "123123123", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 0},
 	{Name: "SECOND TASJ", Description: "ASDASWRWAR", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 1},
@@ -57,7 +59,6 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 }
 
 func GetTasks(w http.ResponseWriter, r *http.Request) {
-	log.SetPrefix("GetTasks/")
 	//time.Sleep(2 * time.Second)
 
 	pageStr := r.URL.Query().Get("page")
@@ -107,13 +108,11 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetTask(w http.ResponseWriter, r *http.Request) {
-	log.SetPrefix("GetTask/")
-
 	idString := r.PathValue("id")
 
 	id, _ := strconv.Atoi(idString)
 	if id >= len(tasks) {
-		log.Printf("Task with ID {%d} not found", id)
+		log.Printf("[GetTask] Task with ID {%d} not found", id)
 		utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found", id))
 		return
 	}
@@ -122,17 +121,26 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateTask(w http.ResponseWriter, r *http.Request) {
-	log.SetPrefix("CreateTask/")
+
+	//log.Printf("Remote addr: %s", r.RemoteAddr)
 
 	var newTask Task
-	utils.ParseJSON(r, &newTask)
+	err := utils.ParseJSON(r, &newTask)
+	if err != nil {
+		log.Printf("[CreateTask] Error parsing request body. %s", err)
+		utils.WriteJSONResponse(w, http.StatusBadRequest, fmt.Sprintf("Error parsing request body. %s", err))
+		return
+	}
 	defer r.Body.Close()
 
 	if newTask.Name == "" {
-		log.Printf("No task name specified.")
+		log.Printf("[CreateTask] No task name specified.")
 		utils.WriteJSONResponse(w, http.StatusBadRequest, "No task name specified")
 		return
 	}
+
+	tasksMu.Lock()
+	defer tasksMu.Unlock()
 
 	newTask.Id = len(tasks) + 1
 	newTask.CreatedAt = time.Now()
@@ -140,45 +148,49 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	tasks = append(tasks, newTask)
 
-	log.Printf("New task created with ID: {%d}", newTask.Id)
+	log.Printf("[CreateTask] New task created with ID: {%d}", newTask.Id)
 	utils.WriteJSONResponse(w, http.StatusCreated, tasks[len(tasks)-1])
 }
 
 func UpdateTask(w http.ResponseWriter, r *http.Request) {
-	log.SetPrefix("UpdateTask/")
-
 	idString := r.PathValue("id")
 	id, _ := strconv.Atoi(idString)
 	idx := slices.IndexFunc(tasks, func(t Task) bool {
 		return t.Id == id
 	})
 	if idx == -1 {
-		log.Printf("Task with ID {%d} not found.", id)
+		log.Printf("[UpdateTask] Task with ID {%d} not found.", id)
 		utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found.", id))
 		return
 	}
 
 	var updatedTask Task
-	utils.ParseJSON(r, &updatedTask)
+	err := utils.ParseJSON(r, &updatedTask)
+	if err != nil {
+		log.Printf("[UpdateTask] Error parsing request body. %s", err)
+		utils.WriteJSONResponse(w, http.StatusBadRequest, fmt.Sprintf("Error parsing request body. %s", err))
+		return
+	}
 	defer r.Body.Close()
 
 	if updatedTask.Name == "" {
-		log.Printf("No task name specified.")
+		log.Printf("[UpdateTask] No task name specified.")
 		utils.WriteJSONResponse(w, http.StatusBadRequest, "No task name specified")
 		return
 	}
+
+	tasksMu.Lock()
+	defer tasksMu.Unlock()
 
 	tasks[idx].Name = updatedTask.Name
 	tasks[idx].Description = updatedTask.Description
 	tasks[idx].UpdatedAt = time.Now()
 
-	log.Printf("Task {%d} updated.", idx)
+	log.Printf("[UpdateTask] Task {%d} updated.", idx)
 	utils.WriteJSONResponse(w, http.StatusOK, tasks[idx])
 }
 
 func DeleteTask(w http.ResponseWriter, r *http.Request) {
-	log.SetPrefix("DeleteTask/")
-
 	idString := r.PathValue("id")
 
 	id, _ := strconv.Atoi(idString)
@@ -187,14 +199,17 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 		return t.Id == id
 	})
 
+	tasksMu.Lock()
+	defer tasksMu.Unlock()
+
 	if idx != -1 {
 		tasks = slices.Delete(tasks, idx, idx+1)
 	} else {
-		log.Printf("Task with ID {%d} not found", id)
+		log.Printf("[DeleteTask] Task with ID {%d} not found", id)
 		utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found", id))
 		return
 	}
 
-	log.Printf("Task {%d} succesfuly deleted", id)
+	log.Printf("[DeleteTask] Task {%d} succesfuly deleted", id)
 	utils.WriteJSONResponse(w, http.StatusOK, fmt.Sprintf("Task {%d} succesfuly deleted", id))
 }

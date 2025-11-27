@@ -20,7 +20,7 @@ func main() {
 	router := http.NewServeMux()
 	router.Handle("/tasks/", http.StripPrefix("/tasks", tasksRouter))
 
-	err := http.ListenAndServe("localhost:"+os.Getenv("SERVERPORT"), router)
+	err := http.ListenAndServe(os.Getenv("SERVERIP")+":"+os.Getenv("SERVERPORT"), router)
 	if err != nil {
 		log.Fatal(err)
 	}
