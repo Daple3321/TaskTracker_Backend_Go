@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"slices"
@@ -12,7 +13,7 @@ import (
 	"gameroll.com/ServerLearn/utils"
 )
 
-var tasksMu sync.Mutex
+var tasksMu sync.RWMutex
 var tasks []Task = []Task{
 	{Name: "TEST TASK", Description: "123123123", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 0},
 	{Name: "SECOND TASJ", Description: "ASDASWRWAR", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 1},
@@ -111,13 +112,16 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 	idString := r.PathValue("id")
 
 	id, _ := strconv.Atoi(idString)
-	if id >= len(tasks) {
+	if id >= len(tasks) || id < 0 {
 		log.Printf("[GetTask] Task with ID {%d} not found", id)
-		utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found", id))
+		//utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found", id))
+		http.Error(w, fmt.Sprintf("Task with ID {%d} not found", id), http.StatusNotFound)
 		return
 	}
 
-	utils.WriteJSONResponse(w, http.StatusOK, tasks[id])
+	tmpl, _ := template.ParseFiles("templates/task.html")
+	tmpl.Execute(w, tasks[id])
+	//utils.WriteJSONResponse(w, http.StatusOK, tasks[id])
 }
 
 func CreateTask(w http.ResponseWriter, r *http.Request) {
@@ -206,7 +210,8 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 		tasks = slices.Delete(tasks, idx, idx+1)
 	} else {
 		log.Printf("[DeleteTask] Task with ID {%d} not found", id)
-		utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found", id))
+		//utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found", id))
+		http.Error(w, fmt.Sprintf("Task with ID {%d} not found", id), http.StatusNotFound)
 		return
 	}
 

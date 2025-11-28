@@ -20,6 +20,10 @@ func main() {
 	router := http.NewServeMux()
 	router.Handle("/tasks/", http.StripPrefix("/tasks", tasksRouter))
 
+	// Serve static files
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+
+	log.Printf("Starting http server\n")
 	err := http.ListenAndServe(os.Getenv("SERVERIP")+":"+os.Getenv("SERVERPORT"), router)
 	if err != nil {
 		log.Fatal(err)
