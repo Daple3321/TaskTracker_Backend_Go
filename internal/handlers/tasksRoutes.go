@@ -10,13 +10,11 @@ import (
 	"time"
 
 	"gameroll.com/ServerLearn/internal/entity"
+	"gameroll.com/ServerLearn/internal/middleware"
 	"gameroll.com/ServerLearn/internal/services"
 	"gameroll.com/ServerLearn/utils"
 )
 
-// Всё неправильно тут сделано.
-// Сам сервис должен хендлить все запросы
-// Это получается как какой-то контроллер лишний
 var taskService *services.TaskService
 
 type TasksHandler struct {
@@ -30,11 +28,11 @@ func NewHandler() *TasksHandler {
 func (h *TasksHandler) RegisterRoutes() *http.ServeMux {
 	r := http.NewServeMux()
 
-	r.HandleFunc("GET /", Logging(GetTasks))
-	r.HandleFunc("GET /{id}/", Logging(GetTask))
-	r.HandleFunc("POST /", Logging(CreateTask))
-	r.HandleFunc("PUT /{id}/", Logging(UpdateTask))
-	r.HandleFunc("DELETE /{id}/", Logging(DeleteTask))
+	r.HandleFunc("GET /", middleware.Auth(middleware.Logging(GetTasks)))
+	r.HandleFunc("GET /{id}/", middleware.Logging(GetTask))
+	r.HandleFunc("POST /", middleware.Logging(CreateTask))
+	r.HandleFunc("PUT /{id}/", middleware.Logging(UpdateTask))
+	r.HandleFunc("DELETE /{id}/", middleware.Logging(DeleteTask))
 
 	return r
 }
@@ -205,11 +203,4 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[DeleteTask] Task {%d} succesfuly deleted", id)
 	utils.WriteJSONResponse(w, http.StatusOK, fmt.Sprintf("Task {%d} succesfuly deleted", id))
-}
-
-func Logging(f http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("[%s : %s] [%s]", r.Method, r.RequestURI, r.RemoteAddr)
-		f(w, r)
-	}
 }

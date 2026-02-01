@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"gameroll.com/ServerLearn/internal/handlers"
+	"gameroll.com/ServerLearn/internal/middleware"
 	"github.com/joho/godotenv"
 )
 
@@ -20,8 +21,13 @@ func main() {
 	tasksHandler := handlers.NewHandler()
 	tasksRouter := tasksHandler.RegisterRoutes()
 
+	authHandler := middleware.NewAuthHandler()
+	authRouter := authHandler.RegisterRoutes()
+
 	router := http.NewServeMux()
 	router.Handle("/tasks/", http.StripPrefix("/tasks", tasksRouter))
+
+	router.Handle("/auth/", http.StripPrefix("/auth", authRouter))
 
 	// Serve static files
 	router.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
