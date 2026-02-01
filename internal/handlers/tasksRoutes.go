@@ -6,9 +6,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
-	"slices"
 	"strconv"
-	"sync"
 	"time"
 
 	"gameroll.com/ServerLearn/internal/entity"
@@ -16,38 +14,9 @@ import (
 	"gameroll.com/ServerLearn/utils"
 )
 
-var tasksMu sync.RWMutex
-var tasks []entity.Task = []entity.Task{
-	{Name: "TEST TASK", Description: "123123123", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 0},
-	{Name: "SECOND TASJ", Description: "ASDASWRWAR", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 1},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-	{Name: "WOW", Description: "AWAW^AW^A", CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: 2},
-}
-
 // Всё неправильно тут сделано.
 // Сам сервис должен хендлить все запросы
 // Это получается как какой-то контроллер лишний
-// ===Ask GPT===
 var taskService *services.TaskService
 
 type TasksHandler struct {
@@ -86,7 +55,9 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 		limit = 10 // Default to 10 items per page
 	}
 
-	totalItems := len(tasks)
+	//totalItems := len(tasks)
+	totalItems := taskService.GetTasksCount()
+	allTasks := taskService.GetTasks()
 	totalPages := (totalItems + limit - 1) / limit // Calculate total pages
 
 	// Calculate offset and end index for the current page
@@ -99,7 +70,7 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 	// Get items for the current page
 	var currentPageItems []entity.Task
 	if offset < totalItems {
-		currentPageItems = tasks[offset:endIndex]
+		currentPageItems = allTasks[offset:endIndex]
 	}
 
 	// Construct the paginated response
@@ -123,10 +94,16 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 	idString := r.PathValue("id")
 
 	id, _ := strconv.Atoi(idString)
-	if id >= len(tasks) || id < 0 {
+	if id < 0 {
 		log.Printf("[GetTask] Task with ID {%d} not found", id)
 		//utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found", id))
 		http.Error(w, fmt.Sprintf("Task with ID {%d} not found", id), http.StatusNotFound)
+		return
+	}
+
+	fetchedTask, err := taskService.GetTask(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
@@ -138,7 +115,7 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	tmpl.Execute(w, tasks[id])
+	tmpl.Execute(w, fetchedTask)
 	//utils.WriteJSONResponse(w, http.StatusOK, tasks[id])
 }
 
@@ -163,34 +140,25 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasksMu.Lock()
-	defer tasksMu.Unlock()
-
-	newTask.Id = len(tasks) + 1
 	newTask.CreatedAt = time.Now()
 	newTask.UpdatedAt = time.Now()
+	//tasksMu.Lock()
+	//defer tasksMu.Unlock()
 
-	tasks = append(tasks, newTask)
+	createdId := taskService.AddTask(&newTask)
 
-	log.Printf("[CreateTask] New task created with ID: {%d}", newTask.Id)
-	utils.WriteJSONResponse(w, http.StatusCreated, tasks[len(tasks)-1])
+	newTask.Id = createdId
+
+	log.Printf("[CreateTask] New task created with ID: {%d}", createdId)
+	utils.WriteJSONResponse(w, http.StatusCreated, newTask)
 }
 
 func UpdateTask(w http.ResponseWriter, r *http.Request) {
 	idString := r.PathValue("id")
 	id, _ := strconv.Atoi(idString)
-	idx := slices.IndexFunc(tasks, func(t entity.Task) bool {
-		return t.Id == id
-	})
-	if idx == -1 {
-		log.Printf("[UpdateTask] Task with ID {%d} not found.", id)
-		//utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found.", id))
-		http.Error(w, fmt.Sprintf("Task with ID {%d} not found", id), http.StatusNotFound)
-		return
-	}
 
-	var updatedTask entity.Task
-	err := utils.ParseJSON(r, &updatedTask)
+	var requestTask entity.Task
+	err := utils.ParseJSON(r, &requestTask)
 	if err != nil {
 		log.Printf("[UpdateTask] Error parsing request body. %s", err)
 		//utils.WriteJSONResponse(w, http.StatusBadRequest, fmt.Sprintf("Error parsing request body. %s", err))
@@ -199,22 +167,25 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	if updatedTask.Name == "" {
+	if requestTask.Name == "" {
 		log.Printf("[UpdateTask] No task name specified.")
 		//utils.WriteJSONResponse(w, http.StatusBadRequest, "No task name specified")
 		http.Error(w, "No task name specified", http.StatusBadRequest)
 		return
 	}
 
-	tasksMu.Lock()
-	defer tasksMu.Unlock()
+	//tasksMu.Lock()
+	//defer tasksMu.Unlock()
 
-	tasks[idx].Name = updatedTask.Name
-	tasks[idx].Description = updatedTask.Description
-	tasks[idx].UpdatedAt = time.Now()
+	updatedTask, err := taskService.UpdateTask(id, &requestTask)
+	if err != nil {
+		log.Printf("[UpdateTask] %s", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	log.Printf("[UpdateTask] Task {%d} updated.", idx)
-	utils.WriteJSONResponse(w, http.StatusOK, tasks[idx])
+	log.Printf("[UpdateTask] Task {%d} updated.", id)
+	utils.WriteJSONResponse(w, http.StatusOK, updatedTask)
 }
 
 func DeleteTask(w http.ResponseWriter, r *http.Request) {
@@ -222,19 +193,13 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 
 	id, _ := strconv.Atoi(idString)
 
-	idx := slices.IndexFunc(tasks, func(t entity.Task) bool {
-		return t.Id == id
-	})
+	//tasksMu.Lock()
+	//defer tasksMu.Unlock()
 
-	tasksMu.Lock()
-	defer tasksMu.Unlock()
+	err := taskService.DeleteTask(id)
 
-	if idx != -1 {
-		tasks = slices.Delete(tasks, idx, idx+1)
-	} else {
-		log.Printf("[DeleteTask] Task with ID {%d} not found", id)
-		//utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found", id))
-		http.Error(w, fmt.Sprintf("Task with ID {%d} not found", id), http.StatusNotFound)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

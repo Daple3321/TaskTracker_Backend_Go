@@ -4,14 +4,17 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"gameroll.com/ServerLearn/internal/handlers"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found")
+	envPath := filepath.Join("..", "..", "configs", ".env")
+	if err := godotenv.Load(envPath); err != nil {
+		log.Printf("No .env file found at: %s\n", envPath)
+		return
 	}
 
 	tasksHandler := handlers.NewHandler()
