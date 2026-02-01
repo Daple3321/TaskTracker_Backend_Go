@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"gameroll.com/ServerLearn/services/tasks"
+	"gameroll.com/ServerLearn/internal/handlers"
 	"github.com/joho/godotenv"
 )
 
@@ -14,14 +14,14 @@ func main() {
 		log.Println("No .env file found")
 	}
 
-	tasksHandler := tasks.NewHandler()
+	tasksHandler := handlers.NewHandler()
 	tasksRouter := tasksHandler.RegisterRoutes()
 
 	router := http.NewServeMux()
 	router.Handle("/tasks/", http.StripPrefix("/tasks", tasksRouter))
 
 	// Serve static files
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	router.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	log.Printf("Starting http server\n")
 	err := http.ListenAndServe(os.Getenv("SERVERIP")+":"+os.Getenv("SERVERPORT"), router)
