@@ -1,4 +1,4 @@
-module gameroll.com/ServerLearn
+module github.com/Daple3321/ServerLearn
 
 go 1.25.3
 

@@ -2,8 +2,10 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 )
 
 func WriteJSONResponse(w http.ResponseWriter, status int, v any) error {
@@ -19,4 +21,18 @@ func ParseJSON(r *http.Request, payload any) error {
 	}
 
 	return json.NewDecoder(r.Body).Decode(payload)
+}
+
+func CheckIfFileExists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+
+		return true
+	}
+
+	if errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+
+	return false
 }

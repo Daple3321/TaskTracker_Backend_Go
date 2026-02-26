@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"gameroll.com/ServerLearn/internal/entity"
+	"github.com/Daple3321/ServerLearn/internal/entity"
 
 	"database/sql"
 

@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strconv"
 	"time"
 
-	"gameroll.com/ServerLearn/internal/entity"
-	"gameroll.com/ServerLearn/internal/middleware"
-	"gameroll.com/ServerLearn/internal/services"
-	"gameroll.com/ServerLearn/utils"
+	"github.com/Daple3321/ServerLearn/internal/entity"
+	"github.com/Daple3321/ServerLearn/internal/middleware"
+	"github.com/Daple3321/ServerLearn/internal/services"
+	"github.com/Daple3321/ServerLearn/utils"
 )
 
 var taskService *services.TaskService
@@ -28,7 +29,7 @@ func NewHandler() *TasksHandler {
 func (h *TasksHandler) RegisterRoutes() *http.ServeMux {
 	r := http.NewServeMux()
 
-	r.HandleFunc("GET /", middleware.Auth(middleware.Logging(GetTasks)))
+	r.HandleFunc("GET /", middleware.Logging(middleware.Auth(GetTasks)))
 	r.HandleFunc("GET /{id}/", middleware.Logging(GetTask))
 	r.HandleFunc("POST /", middleware.Logging(CreateTask))
 	r.HandleFunc("PUT /{id}/", middleware.Logging(UpdateTask))
@@ -93,7 +94,7 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 
 	id, _ := strconv.Atoi(idString)
 	if id < 0 {
-		log.Printf("[GetTask] Task with ID {%d} not found", id)
+		slog.Info("[GetTask] Task not found", "taskId", id)
 		//utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found", id))
 		http.Error(w, fmt.Sprintf("Task with ID {%d} not found", id), http.StatusNotFound)
 		return

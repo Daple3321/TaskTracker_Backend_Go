@@ -12,8 +12,8 @@ import (
 )
 
 type User struct {
-	Username string
-	Password string
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 var secretKey = []byte(os.Getenv("JWT_SECRET_KEY"))
@@ -71,11 +71,11 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	var u User
 	json.NewDecoder(r.Body).Decode(&u)
-	fmt.Printf("The user request value %v", u)
+	//fmt.Printf("The user request value %v", u)
 
 	if u.Username == "" || u.Password == "" {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, "Invalid credentials")
+		//fmt.Fprint(w, "Invalid credentials")
 		return
 	}
 

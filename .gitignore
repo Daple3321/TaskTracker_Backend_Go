@@ -1,1 +1,5 @@
 .env
+*.exe
+cmd/api/api.exe
+*.log
+cmd/api/server.log
