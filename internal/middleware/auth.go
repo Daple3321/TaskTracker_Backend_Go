@@ -34,7 +34,7 @@ func (h *AuthHandler) RegisterRoutes() *http.ServeMux {
 }
 
 func CreateToken(username string, password string) (string, error) {
-	// password here is useless. WHy?
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
 		jwt.MapClaims{
 			"username": username,
@@ -74,8 +74,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	//fmt.Printf("The user request value %v", u)
 
 	if u.Username == "" || u.Password == "" {
-		w.WriteHeader(http.StatusUnauthorized)
-		//fmt.Fprint(w, "Invalid credentials")
+		http.Error(w, "Invalid credentials", http.StatusBadRequest)
 		return
 	}
 

@@ -2,18 +2,15 @@ package handlers
 
 import (
 	"fmt"
-	"html/template"
-	"log"
 	"log/slog"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"time"
 
-	"github.com/Daple3321/ServerLearn/internal/entity"
-	"github.com/Daple3321/ServerLearn/internal/middleware"
-	"github.com/Daple3321/ServerLearn/internal/services"
-	"github.com/Daple3321/ServerLearn/utils"
+	"github.com/Daple3321/TaskTracker/internal/entity"
+	"github.com/Daple3321/TaskTracker/internal/middleware"
+	"github.com/Daple3321/TaskTracker/internal/services"
+	"github.com/Daple3321/TaskTracker/utils"
 )
 
 var taskService *services.TaskService
@@ -57,7 +54,7 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 	//totalItems := len(tasks)
 	totalItems := taskService.GetTasksCount()
 	allTasks := taskService.GetTasks()
-	totalPages := (totalItems + limit - 1) / limit // Calculate total pages
+	totalPages := (totalItems + limit - 1) / limit
 
 	// Calculate offset and end index for the current page
 	offset := (page - 1) * limit
@@ -72,7 +69,6 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 		currentPageItems = allTasks[offset:endIndex]
 	}
 
-	// Construct the paginated response
 	response := entity.PaginatedResponse{
 		Items:      currentPageItems,
 		Page:       page,
@@ -106,16 +102,7 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// this madness is because relative path from cmd/api/main.go to /templates/
-	// is ../../templates/task.html
-	tmpl, err := template.ParseFiles(filepath.Join("..", "..", "templates", "task.html"))
-	if err != nil {
-		log.Printf("[GetTask] Error parsing html template: %s", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	tmpl.Execute(w, fetchedTask)
-	//utils.WriteJSONResponse(w, http.StatusOK, tasks[id])
+	utils.WriteJSONResponse(w, http.StatusOK, fetchedTask)
 }
 
 func CreateTask(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +112,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 	var newTask entity.Task
 	err := utils.ParseJSON(r, &newTask)
 	if err != nil {
-		log.Printf("[CreateTask] Error parsing request body. %s", err)
+		slog.Warn("[CreateTask] Error parsing request body", "err", err)
 		//utils.WriteJSONResponse(w, http.StatusBadRequest, fmt.Sprintf("Error parsing request body. %s", err))
 		http.Error(w, fmt.Sprintf("Error parsing request body. %s", err), http.StatusBadRequest)
 		return
@@ -133,7 +120,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if newTask.Name == "" {
-		log.Printf("[CreateTask] No task name specified.")
+		//log.Printf("[CreateTask] No task name specified.")
 		//utils.WriteJSONResponse(w, http.StatusBadRequest, "No task name specified")
 		http.Error(w, "No task name specified", http.StatusBadRequest)
 		return
@@ -148,7 +135,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	newTask.Id = createdId
 
-	log.Printf("[CreateTask] New task created with ID: {%d}", createdId)
+	slog.Info("[CreateTask] New task created", "taskId", createdId)
 	utils.WriteJSONResponse(w, http.StatusCreated, newTask)
 }
 
@@ -159,16 +146,14 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 	var requestTask entity.Task
 	err := utils.ParseJSON(r, &requestTask)
 	if err != nil {
-		log.Printf("[UpdateTask] Error parsing request body. %s", err)
-		//utils.WriteJSONResponse(w, http.StatusBadRequest, fmt.Sprintf("Error parsing request body. %s", err))
+		//log.Printf("[UpdateTask] Error parsing request body. %s", err)
 		http.Error(w, fmt.Sprintf("Error parsing request body. %s", err), http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
 	if requestTask.Name == "" {
-		log.Printf("[UpdateTask] No task name specified.")
-		//utils.WriteJSONResponse(w, http.StatusBadRequest, "No task name specified")
+		//log.Printf("[UpdateTask] No task name specified.")
 		http.Error(w, "No task name specified", http.StatusBadRequest)
 		return
 	}
@@ -178,12 +163,12 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 	updatedTask, err := taskService.UpdateTask(id, &requestTask)
 	if err != nil {
-		log.Printf("[UpdateTask] %s", err.Error())
+		slog.Error("[UpdateTask] Error updating task", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("[UpdateTask] Task {%d} updated.", id)
+	slog.Info("[UpdateTask] Task updated", "taskId", id)
 	utils.WriteJSONResponse(w, http.StatusOK, updatedTask)
 }
 
@@ -202,6 +187,6 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[DeleteTask] Task {%d} succesfuly deleted", id)
+	slog.Info("[DeleteTask] Task succesfuly deleted", "taskId", id)
 	utils.WriteJSONResponse(w, http.StatusOK, fmt.Sprintf("Task {%d} succesfuly deleted", id))
 }

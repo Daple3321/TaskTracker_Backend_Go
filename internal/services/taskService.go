@@ -3,10 +3,11 @@ package services
 import (
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"time"
 
-	"github.com/Daple3321/ServerLearn/internal/entity"
+	"github.com/Daple3321/TaskTracker/internal/entity"
 
 	"database/sql"
 
@@ -27,12 +28,12 @@ func NewTaskService() *TaskService {
 			os.Getenv("TASKDB_PASSWORD"),
 			os.Getenv("SERVERIP")))
 	if err != nil {
-		log.Fatalf("[TaskService][New] Error opening database, %s", err)
+		slog.Error("[TaskService][New] Error opening database", "err", err)
 	}
 
 	pingErr := newDb.Ping()
 	if pingErr != nil {
-		log.Printf("Error while pinging, %s", pingErr)
+		slog.Error("Error while pinging DB", "err", pingErr)
 	}
 
 	ts := TaskService{
@@ -40,8 +41,8 @@ func NewTaskService() *TaskService {
 	}
 
 	newId := ts.AddTask(&entity.Task{
-		Name:        "NEW Bullshit",
-		Description: "...asdasd23#@#@34",
+		Name:        "New Task",
+		Description: "Big task description",
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	})
@@ -147,17 +148,18 @@ func (t *TaskService) AddTask(newTask *entity.Task) int {
 	if err != nil {
 		log.Fatal(err)
 	}
-	rowCnt, err := res.RowsAffected()
-	if err != nil {
-		log.Fatal(err)
-	}
+
+	// rowCnt, err := res.RowsAffected()
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	err = tx.Commit()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("[TaskService] [AddTask] Task {%d} added. Rows affected: %d", lastId, rowCnt)
+	//log.Printf("[TaskService] [AddTask] Task {%d} added. Rows affected: %d", lastId, rowCnt)
 
 	return int(lastId)
 }
@@ -202,7 +204,7 @@ func (t *TaskService) UpdateTask(id int, updatedTask *entity.Task) (*entity.Task
 	updatedTask.CreatedAt = fetchedTask.CreatedAt
 	updatedTask.UpdatedAt = time.Now()
 	updatedTask.Id = fetchedTask.Id
-	log.Printf("[TaskService] [UpdateTask] Task {%d} updated.", id)
+	//log.Printf("[TaskService] [UpdateTask] Task {%d} updated.", id)
 
 	return updatedTask, nil
 }
@@ -235,7 +237,7 @@ func (t *TaskService) DeleteTask(id int) error {
 		log.Fatal(err)
 	}
 
-	log.Printf("[TaskService] [DeleteTask] Task with id: {%d} deleted.", id)
+	//log.Printf("[TaskService] [DeleteTask] Task with id: {%d} deleted.", id)
 
 	return nil
 }

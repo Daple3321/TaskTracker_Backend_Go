@@ -7,8 +7,8 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/Daple3321/ServerLearn/internal/handlers"
-	"github.com/Daple3321/ServerLearn/internal/middleware"
+	"github.com/Daple3321/TaskTracker/internal/handlers"
+	"github.com/Daple3321/TaskTracker/internal/middleware"
 	"github.com/joho/godotenv"
 )
 
@@ -24,7 +24,6 @@ func main() {
 	}
 	defer logFile.Close()
 
-	// TODO: Make logs to file
 	opts := slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}
@@ -49,7 +48,7 @@ func main() {
 	router.Handle("/auth/", http.StripPrefix("/auth", authRouter))
 
 	// Serve static files
-	router.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	//router.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	slog.Info("Listening on:", "ip", os.Getenv("SERVERIP"), "port", os.Getenv("SERVERPORT"))
 	err = http.ListenAndServe(os.Getenv("SERVERIP")+":"+os.Getenv("SERVERPORT"), router)

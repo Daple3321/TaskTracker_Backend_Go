@@ -1,4 +1,4 @@
-module github.com/Daple3321/ServerLearn
+module github.com/Daple3321/TaskTracker
 
 go 1.25.3
 
