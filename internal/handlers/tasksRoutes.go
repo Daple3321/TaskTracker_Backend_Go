@@ -94,16 +94,13 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 	idString := r.PathValue("id")
 
 	id, _ := strconv.Atoi(idString)
-	// TODO: Move parameter checs, sanitization to service
-	if id < 0 {
-		slog.Info("[GetTask] Task ID couldn't be less then zero", "taskId", id)
-		http.Error(w, "Task ID can't be less then zero", http.StatusBadRequest)
-		return
-	}
 
 	fetchedTask, err := taskService.GetTask(id)
 	if err != nil {
-		if errors.Is(err, repositories.ErrTaskNotFound) {
+		if errors.Is(err, services.ErrInvalidTask) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		} else if errors.Is(err, repositories.ErrTaskNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		} else {
@@ -127,21 +124,18 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	// TODO: Move to service
-	if newTask.Name == "" {
-		//log.Printf("[CreateTask] No task name specified.")
-		//utils.WriteJSONResponse(w, http.StatusBadRequest, "No task name specified")
-		http.Error(w, "No task name specified", http.StatusBadRequest)
-		return
-	}
-
 	newTask.CreatedAt = time.Now()
 	newTask.UpdatedAt = time.Now()
 
 	createdId, err := taskService.AddTask(&newTask)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		if errors.Is(err, services.ErrInvalidTask) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	newTask.Id = createdId
@@ -157,26 +151,20 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 	var requestTask entity.Task
 	err := utils.ParseJSON(r, &requestTask)
 	if err != nil {
-		//log.Printf("[UpdateTask] Error parsing request body. %s", err)
 		http.Error(w, fmt.Sprintf("Error parsing request body. %s", err), http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
-
-	// TODO: Move to service
-	if requestTask.Name == "" {
-		//log.Printf("[UpdateTask] No task name specified.")
-		http.Error(w, "No task name specified", http.StatusBadRequest)
-		return
-	}
 
 	updatedTask, err := taskService.UpdateTask(id, &requestTask)
 	if err != nil {
 		slog.Error("[UpdateTask] Error updating task", "err", err.Error())
 		if errors.Is(err, repositories.ErrTaskNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
-		} else {
+		} else if errors.Is(err, services.ErrInvalidTask) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return
 	}
@@ -191,12 +179,13 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.Atoi(idString)
 
 	err := taskService.DeleteTask(id)
-
 	if err != nil {
 		if errors.Is(err, repositories.ErrTaskNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
-		} else {
+		} else if errors.Is(err, services.ErrInvalidTask) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return
 	}

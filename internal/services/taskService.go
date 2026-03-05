@@ -36,6 +36,10 @@ func (t *TaskService) GetTasks() ([]entity.Task, error) {
 
 func (t *TaskService) GetTask(taskId int) (*entity.Task, error) {
 
+	if taskId < 0 {
+		return nil, ErrInvalidTask
+	}
+
 	fetchedTask, err := t.storage.GetTask(taskId)
 	if err != nil {
 		return nil, err
