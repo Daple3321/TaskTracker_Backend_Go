@@ -1,6 +1,8 @@
 package main
 
 import (
+	"database/sql"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -10,25 +12,17 @@ import (
 	"github.com/Daple3321/TaskTracker/internal/handlers"
 	"github.com/Daple3321/TaskTracker/internal/middleware"
 	"github.com/joho/godotenv"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func main() {
 
-	workDir, _ := os.Getwd()
-	logPath := path.Join(workDir, "server.log")
-	//os.WriteFile(logPath, []byte{}, os.ModeAppend)
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := SetupLogger()
 	if err != nil {
-		slog.Error("Failed to open log file", "err", err)
 		return
 	}
 	defer logFile.Close()
-
-	opts := slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}
-	logger := slog.New(slog.NewJSONHandler(logFile, &opts))
-	slog.SetDefault(logger)
 
 	envPath := filepath.Join("..", "..", "configs", ".env")
 	if err := godotenv.Load(envPath); err != nil {
@@ -36,7 +30,12 @@ func main() {
 		return
 	}
 
-	tasksHandler := handlers.NewHandler()
+	db, err := SetupDB()
+	if err != nil {
+		return
+	}
+
+	tasksHandler := handlers.NewHandler(db)
 	tasksRouter := tasksHandler.RegisterRoutes()
 
 	authHandler := middleware.NewAuthHandler()
@@ -47,12 +46,48 @@ func main() {
 
 	router.Handle("/auth/", http.StripPrefix("/auth", authRouter))
 
-	// Serve static files
-	//router.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-
 	slog.Info("Listening on:", "ip", os.Getenv("SERVERIP"), "port", os.Getenv("SERVERPORT"))
 	err = http.ListenAndServe(os.Getenv("SERVERIP")+":"+os.Getenv("SERVERPORT"), router)
 	if err != nil {
 		slog.Error("Error starting http server", "err", err)
 	}
+}
+
+func SetupDB() (*sql.DB, error) {
+	newDb, err := sql.Open("mysql",
+		fmt.Sprintf("%s:%s@tcp(%s:3306)/tasks?parseTime=true",
+			os.Getenv("TASKDB_USERNAME"),
+			os.Getenv("TASKDB_PASSWORD"),
+			os.Getenv("SERVERIP")))
+	if err != nil {
+		slog.Error("Error opening database", "err", err)
+		return nil, err
+	}
+
+	pingErr := newDb.Ping()
+	if pingErr != nil {
+		slog.Error("Error while pinging DB", "err", pingErr)
+		return nil, err
+	}
+
+	return newDb, nil
+}
+
+func SetupLogger() (*os.File, error) {
+	workDir, _ := os.Getwd()
+	logPath := path.Join(workDir, "server.log")
+	//os.WriteFile(logPath, []byte{}, os.ModeAppend)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		slog.Error("Failed to open log file", "err", err)
+		return nil, err
+	}
+
+	opts := slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}
+	logger := slog.New(slog.NewJSONHandler(logFile, &opts))
+	slog.SetDefault(logger)
+
+	return logFile, nil
 }

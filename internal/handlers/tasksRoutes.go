@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/Daple3321/TaskTracker/internal/entity"
 	"github.com/Daple3321/TaskTracker/internal/middleware"
+	"github.com/Daple3321/TaskTracker/internal/repositories"
 	"github.com/Daple3321/TaskTracker/internal/services"
 	"github.com/Daple3321/TaskTracker/utils"
 )
@@ -18,8 +21,11 @@ var taskService *services.TaskService
 type TasksHandler struct {
 }
 
-func NewHandler() *TasksHandler {
-	taskService = services.NewTaskService()
+func NewHandler(db *sql.DB) *TasksHandler {
+
+	taskRepo := repositories.NewTaskRepository(db)
+	taskService = services.NewTaskService(taskRepo)
+
 	return &TasksHandler{}
 }
 
@@ -35,9 +41,8 @@ func (h *TasksHandler) RegisterRoutes() *http.ServeMux {
 	return r
 }
 
+// TODO: transfer pagination logic and handling to repo layer or service
 func GetTasks(w http.ResponseWriter, r *http.Request) {
-	//time.Sleep(2 * time.Second)
-
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 
@@ -52,8 +57,8 @@ func GetTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//totalItems := len(tasks)
-	totalItems := taskService.GetTasksCount()
-	allTasks := taskService.GetTasks()
+	totalItems, err := taskService.GetTasksCount()
+	allTasks, err := taskService.GetTasks()
 	totalPages := (totalItems + limit - 1) / limit
 
 	// Calculate offset and end index for the current page
@@ -89,25 +94,28 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 	idString := r.PathValue("id")
 
 	id, _ := strconv.Atoi(idString)
+	// TODO: Move parameter checs, sanitization to service
 	if id < 0 {
-		slog.Info("[GetTask] Task not found", "taskId", id)
-		//utils.WriteJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Task with ID {%d} not found", id))
-		http.Error(w, fmt.Sprintf("Task with ID {%d} not found", id), http.StatusNotFound)
+		slog.Info("[GetTask] Task ID couldn't be less then zero", "taskId", id)
+		http.Error(w, "Task ID can't be less then zero", http.StatusBadRequest)
 		return
 	}
 
 	fetchedTask, err := taskService.GetTask(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
+		if errors.Is(err, repositories.ErrTaskNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	utils.WriteJSONResponse(w, http.StatusOK, fetchedTask)
 }
 
 func CreateTask(w http.ResponseWriter, r *http.Request) {
-
-	//log.Printf("Remote addr: %s", r.RemoteAddr)
 
 	var newTask entity.Task
 	err := utils.ParseJSON(r, &newTask)
@@ -119,6 +127,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	// TODO: Move to service
 	if newTask.Name == "" {
 		//log.Printf("[CreateTask] No task name specified.")
 		//utils.WriteJSONResponse(w, http.StatusBadRequest, "No task name specified")
@@ -128,10 +137,12 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	newTask.CreatedAt = time.Now()
 	newTask.UpdatedAt = time.Now()
-	//tasksMu.Lock()
-	//defer tasksMu.Unlock()
 
-	createdId := taskService.AddTask(&newTask)
+	createdId, err := taskService.AddTask(&newTask)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	newTask.Id = createdId
 
@@ -152,19 +163,21 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	// TODO: Move to service
 	if requestTask.Name == "" {
 		//log.Printf("[UpdateTask] No task name specified.")
 		http.Error(w, "No task name specified", http.StatusBadRequest)
 		return
 	}
 
-	//tasksMu.Lock()
-	//defer tasksMu.Unlock()
-
 	updatedTask, err := taskService.UpdateTask(id, &requestTask)
 	if err != nil {
 		slog.Error("[UpdateTask] Error updating task", "err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if errors.Is(err, repositories.ErrTaskNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
 		return
 	}
 
@@ -177,13 +190,14 @@ func DeleteTask(w http.ResponseWriter, r *http.Request) {
 
 	id, _ := strconv.Atoi(idString)
 
-	//tasksMu.Lock()
-	//defer tasksMu.Unlock()
-
 	err := taskService.DeleteTask(id)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if errors.Is(err, repositories.ErrTaskNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
 		return
 	}
 
