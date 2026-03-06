@@ -67,7 +67,7 @@ func SetupDB() (*sql.DB, error) {
 	pingErr := newDb.Ping()
 	if pingErr != nil {
 		slog.Error("Error while pinging DB", "err", pingErr)
-		return nil, err
+		return nil, pingErr
 	}
 
 	return newDb, nil

@@ -60,7 +60,7 @@ func VerifyToken(tokenString string) error {
 	}
 
 	if !token.Valid {
-		return fmt.Errorf("Invalid token")
+		return fmt.Errorf("invalid token")
 	}
 
 	return nil
@@ -74,13 +74,13 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	//fmt.Printf("The user request value %v", u)
 
 	if u.Username == "" || u.Password == "" {
-		http.Error(w, "Invalid credentials", http.StatusBadRequest)
+		http.Error(w, "invalid credentials", http.StatusBadRequest)
 		return
 	}
 
 	tokenString, err := CreateToken(u.Username, u.Password)
 	if err != nil {
-		http.Error(w, "Error creating token", http.StatusBadRequest)
+		http.Error(w, "error creating token", http.StatusBadRequest)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -91,7 +91,7 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			http.Error(w, "Token not provided.", http.StatusUnauthorized)
+			http.Error(w, "token not provided.", http.StatusUnauthorized)
 			return
 		}
 

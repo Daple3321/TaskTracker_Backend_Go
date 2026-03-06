@@ -32,7 +32,7 @@ func NewHandler(db *sql.DB) *TasksHandler {
 func (h *TasksHandler) RegisterRoutes() *http.ServeMux {
 	r := http.NewServeMux()
 
-	r.HandleFunc("GET /", middleware.Logging(middleware.Auth(GetTasks)))
+	r.HandleFunc("GET /", middleware.Logging(middleware.Auth(GetTasksPaginated)))
 	r.HandleFunc("GET /{id}/", middleware.Logging(GetTask))
 	r.HandleFunc("POST /", middleware.Logging(CreateTask))
 	r.HandleFunc("PUT /{id}/", middleware.Logging(UpdateTask))
@@ -41,51 +41,20 @@ func (h *TasksHandler) RegisterRoutes() *http.ServeMux {
 	return r
 }
 
-// TODO: transfer pagination logic and handling to repo layer or service
-func GetTasks(w http.ResponseWriter, r *http.Request) {
+func GetTasksPaginated(w http.ResponseWriter, r *http.Request) {
+
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1 // Default to page 1
+	response, err := taskService.GetTasksPaginated(pageStr, limitStr)
+	if err != nil {
+		if errors.Is(err, services.ErrNoPageParameter) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
 	}
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit < 1 {
-		limit = 10 // Default to 10 items per page
-	}
-
-	//totalItems := len(tasks)
-	totalItems, err := taskService.GetTasksCount()
-	allTasks, err := taskService.GetTasks()
-	totalPages := (totalItems + limit - 1) / limit
-
-	// Calculate offset and end index for the current page
-	offset := (page - 1) * limit
-	endIndex := offset + limit
-	if endIndex > totalItems {
-		endIndex = totalItems
-	}
-
-	// Get items for the current page
-	var currentPageItems []entity.Task
-	if offset < totalItems {
-		currentPageItems = allTasks[offset:endIndex]
-	}
-
-	response := entity.PaginatedResponse{
-		Items:      currentPageItems,
-		Page:       page,
-		Limit:      limit,
-		TotalItems: totalItems,
-		TotalPages: totalPages,
-	}
-
-	// response := map[string]any{
-	// 	"message": fmt.Sprintf("page={%d}, limit={%d}", page, limit),
-	// 	"Tasks":   tasks,
-	// }
 
 	utils.WriteJSONResponse(w, http.StatusOK, response)
 }

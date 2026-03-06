@@ -12,6 +12,7 @@ import (
 type Repository interface {
 	GetTasksCount() (int, error)
 	GetAllTasks() ([]entity.Task, error)
+	GetTasksPaginated(offset int, limit int) ([]entity.Task, error)
 	GetTask(taskId int) (*entity.Task, error)
 	CreateTask(newTask *entity.Task) (int, error)
 	UpdateTask(id int, updatedTask *entity.Task) (*entity.Task, error)
@@ -66,6 +67,36 @@ func (t *TaskRepository) GetAllTasks() ([]entity.Task, error) {
 		}
 
 		result = append(result, fetchedTask)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (t *TaskRepository) GetTasksPaginated(page int, limit int) ([]entity.Task, error) {
+
+	offset := (page - 1) * limit
+
+	result := []entity.Task{}
+
+	rows, err := t.db.Query("SELECT * FROM tasks LIMIT ? OFFSET ?", limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var task entity.Task
+		err := rows.Scan(&task.Id, &task.Name, &task.Description, &task.CreatedAt, &task.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		result = append(result, task)
 	}
 
 	err = rows.Err()
