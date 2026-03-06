@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -15,6 +16,8 @@ import (
 	"github.com/Daple3321/TaskTracker/internal/services"
 	"github.com/Daple3321/TaskTracker/utils"
 )
+
+const requestTimeout = 3 * time.Second
 
 var taskService *services.TaskService
 
@@ -37,16 +40,32 @@ func (h *TasksHandler) RegisterRoutes() *http.ServeMux {
 	r.HandleFunc("POST /", middleware.Logging(CreateTask))
 	r.HandleFunc("PUT /{id}/", middleware.Logging(UpdateTask))
 	r.HandleFunc("DELETE /{id}/", middleware.Logging(DeleteTask))
+	r.HandleFunc("GET /test/", middleware.Logging(TestRoute))
 
 	return r
 }
 
+func TestRoute(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	err := taskService.TestFunc(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func GetTasksPaginated(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
 
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 
-	response, err := taskService.GetTasksPaginated(pageStr, limitStr)
+	response, err := taskService.GetTasksPaginated(ctx, pageStr, limitStr)
 	if err != nil {
 		if errors.Is(err, services.ErrNoPageParameter) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -60,11 +79,14 @@ func GetTasksPaginated(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetTask(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
 	idString := r.PathValue("id")
 
 	id, _ := strconv.Atoi(idString)
 
-	fetchedTask, err := taskService.GetTask(id)
+	fetchedTask, err := taskService.GetTask(ctx, id)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidTask) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -82,6 +104,8 @@ func GetTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateTask(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
 
 	var newTask entity.Task
 	err := utils.ParseJSON(r, &newTask)
@@ -96,7 +120,7 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 	newTask.CreatedAt = time.Now()
 	newTask.UpdatedAt = time.Now()
 
-	createdId, err := taskService.AddTask(&newTask)
+	createdId, err := taskService.AddTask(ctx, &newTask)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidTask) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -114,6 +138,9 @@ func CreateTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateTask(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
 	idString := r.PathValue("id")
 	id, _ := strconv.Atoi(idString)
 
@@ -125,7 +152,7 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	updatedTask, err := taskService.UpdateTask(id, &requestTask)
+	updatedTask, err := taskService.UpdateTask(ctx, id, &requestTask)
 	if err != nil {
 		slog.Error("[UpdateTask] Error updating task", "err", err.Error())
 		if errors.Is(err, repositories.ErrTaskNotFound) {
@@ -143,11 +170,14 @@ func UpdateTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteTask(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
 	idString := r.PathValue("id")
 
 	id, _ := strconv.Atoi(idString)
 
-	err := taskService.DeleteTask(id)
+	err := taskService.DeleteTask(ctx, id)
 	if err != nil {
 		if errors.Is(err, repositories.ErrTaskNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)

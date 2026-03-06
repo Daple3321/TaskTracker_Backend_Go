@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log/slog"
@@ -10,16 +11,18 @@ import (
 )
 
 type Repository interface {
-	GetTasksCount() (int, error)
-	GetAllTasks() ([]entity.Task, error)
-	GetTasksPaginated(offset int, limit int) ([]entity.Task, error)
-	GetTask(taskId int) (*entity.Task, error)
-	CreateTask(newTask *entity.Task) (int, error)
-	UpdateTask(id int, updatedTask *entity.Task) (*entity.Task, error)
-	DeleteTask(id int) error
+	GetTasksCount(ctx context.Context) (int, error)
+	GetAllTasks(ctx context.Context) ([]entity.Task, error)
+	GetTasksPaginated(ctx context.Context, offset int, limit int) ([]entity.Task, error)
+	GetTask(ctx context.Context, taskId int) (*entity.Task, error)
+	CreateTask(ctx context.Context, newTask *entity.Task) (int, error)
+	UpdateTask(ctx context.Context, id int, updatedTask *entity.Task) (*entity.Task, error)
+	DeleteTask(ctx context.Context, id int) error
 }
 
 var ErrTaskNotFound = errors.New("task not found")
+
+const dbTimeout = time.Second * 3
 
 type TaskRepository struct {
 	db *sql.DB
@@ -34,12 +37,14 @@ func NewTaskRepository(db *sql.DB) *TaskRepository {
 	return &tr
 }
 
-func (t *TaskRepository) GetTasksCount() (int, error) {
+func (t *TaskRepository) GetTasksCount(ctx context.Context) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
 
 	var cnt int
 
 	query := "SELECT COUNT(*) FROM tasks"
-	err := t.db.QueryRow(query).Scan(&cnt)
+	err := t.db.QueryRowContext(ctx, query).Scan(&cnt)
 	if err != nil {
 		slog.Error("Error while getting tasks count", "err", err)
 		return 0, err
@@ -48,11 +53,13 @@ func (t *TaskRepository) GetTasksCount() (int, error) {
 	return cnt, nil
 }
 
-func (t *TaskRepository) GetAllTasks() ([]entity.Task, error) {
+func (t *TaskRepository) GetAllTasks(ctx context.Context) ([]entity.Task, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
 
 	result := []entity.Task{}
 
-	rows, err := t.db.Query("SELECT * FROM tasks")
+	rows, err := t.db.QueryContext(ctx, "SELECT * FROM tasks")
 	if err != nil {
 		slog.Error("Error on query", "err", err)
 		return nil, err
@@ -77,13 +84,15 @@ func (t *TaskRepository) GetAllTasks() ([]entity.Task, error) {
 	return result, nil
 }
 
-func (t *TaskRepository) GetTasksPaginated(page int, limit int) ([]entity.Task, error) {
+func (t *TaskRepository) GetTasksPaginated(ctx context.Context, page int, limit int) ([]entity.Task, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
 
 	offset := (page - 1) * limit
 
 	result := []entity.Task{}
 
-	rows, err := t.db.Query("SELECT * FROM tasks LIMIT ? OFFSET ?", limit, offset)
+	rows, err := t.db.QueryContext(ctx, "SELECT * FROM tasks LIMIT ? OFFSET ?", limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -107,11 +116,13 @@ func (t *TaskRepository) GetTasksPaginated(page int, limit int) ([]entity.Task, 
 	return result, nil
 }
 
-func (t *TaskRepository) GetTask(taskId int) (*entity.Task, error) {
+func (t *TaskRepository) GetTask(ctx context.Context, taskId int) (*entity.Task, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
 
 	fetchedTask := entity.Task{}
 
-	row := t.db.QueryRow(
+	row := t.db.QueryRowContext(ctx,
 		"SELECT id, task_name, task_description, created_at, updated_at FROM tasks WHERE id = ?",
 		taskId,
 	)
@@ -126,22 +137,55 @@ func (t *TaskRepository) GetTask(taskId int) (*entity.Task, error) {
 	return &fetchedTask, nil
 }
 
-func (t *TaskRepository) CreateTask(newTask *entity.Task) (int, error) {
+func (t *TaskRepository) GetTask_Long(ctx context.Context, taskId int) (*entity.Task, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
 
-	tx, err := t.db.Begin()
+	fetchedTask := entity.Task{}
+
+	select {
+	// simulates long DB request
+	case <-time.After(4 * time.Second):
+		row := t.db.QueryRowContext(ctx,
+			"SELECT id, task_name, task_description, created_at, updated_at FROM tasks WHERE id = ?",
+			taskId,
+		)
+
+		if err := row.Scan(&fetchedTask.Id, &fetchedTask.Name, &fetchedTask.Description, &fetchedTask.CreatedAt, &fetchedTask.UpdatedAt); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrTaskNotFound
+			}
+			return nil, err
+		}
+
+		return &fetchedTask, nil
+
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	//return &fetchedTask, nil
+}
+
+func (t *TaskRepository) CreateTask(ctx context.Context, newTask *entity.Task) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	tx, err := t.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("INSERT INTO tasks (task_name, task_description, created_at, updated_at) VALUES(?,?,?,?)")
+	stmt, err := tx.PrepareContext(ctx,
+		"INSERT INTO tasks (task_name, task_description, created_at, updated_at) VALUES(?,?,?,?)")
 	if err != nil {
 		return 0, err
 	}
 	defer stmt.Close()
 
-	res, err := stmt.Exec(newTask.Name, newTask.Description, newTask.CreatedAt, newTask.UpdatedAt)
+	res, err := stmt.ExecContext(ctx, newTask.Name, newTask.Description, newTask.CreatedAt, newTask.UpdatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -159,26 +203,29 @@ func (t *TaskRepository) CreateTask(newTask *entity.Task) (int, error) {
 	return int(lastId), nil
 }
 
-func (t *TaskRepository) UpdateTask(id int, updatedTask *entity.Task) (*entity.Task, error) {
+func (t *TaskRepository) UpdateTask(ctx context.Context, id int, updatedTask *entity.Task) (*entity.Task, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
 
-	fetchedTask, err := t.GetTask(id)
+	fetchedTask, err := t.GetTask(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	tx, err := t.db.Begin()
+	tx, err := t.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("UPDATE tasks SET task_name=?, task_description=?, created_at=?, updated_at=? WHERE id = ?")
+	stmt, err := tx.PrepareContext(ctx,
+		"UPDATE tasks SET task_name=?, task_description=?, created_at=?, updated_at=? WHERE id = ?")
 	if err != nil {
 		return nil, err
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(updatedTask.Name, updatedTask.Description, fetchedTask.CreatedAt, time.Now(), id)
+	_, err = stmt.ExecContext(ctx, updatedTask.Name, updatedTask.Description, fetchedTask.CreatedAt, time.Now(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -196,26 +243,26 @@ func (t *TaskRepository) UpdateTask(id int, updatedTask *entity.Task) (*entity.T
 	return updatedTask, nil
 }
 
-func (t *TaskRepository) DeleteTask(id int) error {
+func (t *TaskRepository) DeleteTask(ctx context.Context, id int) error {
 
-	_, err := t.GetTask(id)
+	_, err := t.GetTask(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	tx, err := t.db.Begin()
+	tx, err := t.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("DELETE FROM tasks WHERE id = ?")
+	stmt, err := tx.PrepareContext(ctx, "DELETE FROM tasks WHERE id = ?")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(id)
+	_, err = stmt.ExecContext(ctx, id)
 	if err != nil {
 		return err
 	}

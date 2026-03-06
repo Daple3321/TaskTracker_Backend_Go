@@ -1,9 +1,11 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Daple3321/TaskTracker/internal/entity"
 	"github.com/Daple3321/TaskTracker/internal/repositories"
@@ -25,18 +27,27 @@ func NewTaskService(storage repositories.Repository) *TaskService {
 	return &ts
 }
 
-func (t *TaskService) GetTasksCount() (int, error) {
+func (t *TaskService) TestFunc(ctx context.Context) error {
+	select {
+	case <-time.After(3 * time.Second):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
-	cnt, err := t.storage.GetTasksCount()
+func (t *TaskService) GetTasksCount(ctx context.Context) (int, error) {
+
+	cnt, err := t.storage.GetTasksCount(ctx)
 
 	return cnt, err
 }
 
-func (t *TaskService) GetAllTasks() ([]entity.Task, error) {
-	return t.storage.GetAllTasks()
+func (t *TaskService) GetAllTasks(ctx context.Context) ([]entity.Task, error) {
+	return t.storage.GetAllTasks(ctx)
 }
 
-func (t *TaskService) GetTasksPaginated(pageStr string, limitStr string) (*entity.PaginatedResponse, error) {
+func (t *TaskService) GetTasksPaginated(ctx context.Context, pageStr string, limitStr string) (*entity.PaginatedResponse, error) {
 
 	pageStr = strings.TrimSpace(pageStr)
 	if pageStr == "" {
@@ -54,12 +65,12 @@ func (t *TaskService) GetTasksPaginated(pageStr string, limitStr string) (*entit
 		limit = 10 // Default to 10 items per page
 	}
 
-	tasks, err := t.storage.GetTasksPaginated(page, limit)
+	tasks, err := t.storage.GetTasksPaginated(ctx, page, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	totalItems, err := t.GetTasksCount()
+	totalItems, err := t.GetTasksCount(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -77,13 +88,13 @@ func (t *TaskService) GetTasksPaginated(pageStr string, limitStr string) (*entit
 	return &response, nil
 }
 
-func (t *TaskService) GetTask(taskId int) (*entity.Task, error) {
+func (t *TaskService) GetTask(ctx context.Context, taskId int) (*entity.Task, error) {
 
 	if taskId < 0 {
 		return nil, ErrInvalidTask
 	}
 
-	fetchedTask, err := t.storage.GetTask(taskId)
+	fetchedTask, err := t.storage.GetTask(ctx, taskId)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +102,7 @@ func (t *TaskService) GetTask(taskId int) (*entity.Task, error) {
 	return fetchedTask, nil
 }
 
-func (t *TaskService) AddTask(newTask *entity.Task) (int, error) {
+func (t *TaskService) AddTask(ctx context.Context, newTask *entity.Task) (int, error) {
 
 	newTask.Name = strings.TrimSpace(newTask.Name)
 	newTask.Description = strings.TrimSpace(newTask.Description)
@@ -99,10 +110,10 @@ func (t *TaskService) AddTask(newTask *entity.Task) (int, error) {
 		return 0, ErrInvalidTask
 	}
 
-	return t.storage.CreateTask(newTask)
+	return t.storage.CreateTask(ctx, newTask)
 }
 
-func (t *TaskService) UpdateTask(id int, updatedTask *entity.Task) (*entity.Task, error) {
+func (t *TaskService) UpdateTask(ctx context.Context, id int, updatedTask *entity.Task) (*entity.Task, error) {
 
 	updatedTask.Name = strings.TrimSpace(updatedTask.Name)
 	updatedTask.Description = strings.TrimSpace(updatedTask.Description)
@@ -110,9 +121,9 @@ func (t *TaskService) UpdateTask(id int, updatedTask *entity.Task) (*entity.Task
 		return nil, ErrInvalidTask
 	}
 
-	return t.storage.UpdateTask(id, updatedTask)
+	return t.storage.UpdateTask(ctx, id, updatedTask)
 }
 
-func (t *TaskService) DeleteTask(id int) error {
-	return t.storage.DeleteTask(id)
+func (t *TaskService) DeleteTask(ctx context.Context, id int) error {
+	return t.storage.DeleteTask(ctx, id)
 }
