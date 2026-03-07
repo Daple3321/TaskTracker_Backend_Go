@@ -34,6 +34,18 @@ func NewTaskRepository(db *sql.DB) *TaskRepository {
 		db: db,
 	}
 
+	_, err := tr.db.Exec(`
+		CREATE TABLE IF NOT EXISTS tasks (
+			id INT PRIMARY KEY AUTO_INCREMENT, 
+			task_name VARCHAR(45), 
+			task_description VARCHAR(45), 
+			created_at DATETIME, 
+			updated_at DATETIME
+	);`)
+	if err != nil {
+		slog.Error("error creating tasks table", "err", err)
+	}
+
 	return &tr
 }
 

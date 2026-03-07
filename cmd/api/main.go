@@ -26,7 +26,12 @@ func main() {
 
 	envPath := filepath.Join("..", "..", "configs", ".env")
 	if err := godotenv.Load(envPath); err != nil {
-		slog.Error("No .env file found at:", "envPath", envPath)
+		slog.Error("no .env file found at:", "envPath", envPath)
+		return
+	}
+
+	if err := ValidateEnvVars(); err != nil {
+		slog.Error("error validating env vars", "err", err)
 		return
 	}
 
@@ -49,8 +54,26 @@ func main() {
 	slog.Info("Listening on:", "ip", os.Getenv("SERVERIP"), "port", os.Getenv("SERVERPORT"))
 	err = http.ListenAndServe(os.Getenv("SERVERIP")+":"+os.Getenv("SERVERPORT"), router)
 	if err != nil {
-		slog.Error("Error starting http server", "err", err)
+		slog.Error("error starting http server", "err", err)
 	}
+}
+
+func ValidateEnvVars() error {
+	vars := []string{
+		"SERVERPORT",
+		"SERVERIP",
+		"TASKDB_USERNAME",
+		"TASKDB_PASSWORD",
+		"JWT_SECRET_KEY",
+	}
+
+	for _, v := range vars {
+		if os.Getenv(v) == "" {
+			return fmt.Errorf("env var %s not set", v)
+		}
+	}
+
+	return nil
 }
 
 func SetupDB() (*sql.DB, error) {
@@ -60,13 +83,13 @@ func SetupDB() (*sql.DB, error) {
 			os.Getenv("TASKDB_PASSWORD"),
 			os.Getenv("SERVERIP")))
 	if err != nil {
-		slog.Error("Error opening database", "err", err)
+		slog.Error("error opening database", "err", err)
 		return nil, err
 	}
 
 	pingErr := newDb.Ping()
 	if pingErr != nil {
-		slog.Error("Error while pinging DB", "err", pingErr)
+		slog.Error("error while pinging DB", "err", pingErr)
 		return nil, pingErr
 	}
 
@@ -79,7 +102,7 @@ func SetupLogger() (*os.File, error) {
 	//os.WriteFile(logPath, []byte{}, os.ModeAppend)
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		slog.Error("Failed to open log file", "err", err)
+		slog.Error("failed to open log file", "err", err)
 		return nil, err
 	}
 
