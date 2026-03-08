@@ -56,8 +56,10 @@ func main() {
 
 	router.Handle("/auth/", http.StripPrefix("/auth", authRouter))
 
+	handler := corsMiddleware(router)
+
 	slog.Info("Listening on:", "ip", os.Getenv("SERVERIP"), "port", os.Getenv("SERVERPORT"))
-	err = http.ListenAndServe(os.Getenv("SERVERIP")+":"+os.Getenv("SERVERPORT"), router)
+	err = http.ListenAndServe(os.Getenv("SERVERIP")+":"+os.Getenv("SERVERPORT"), handler)
 	if err != nil {
 		slog.Error("error starting http server", "err", err)
 	}
@@ -79,6 +81,19 @@ func ValidateEnvVars() error {
 	}
 
 	return nil
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func SetupDB() (*sql.DB, error) {

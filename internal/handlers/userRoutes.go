@@ -30,7 +30,7 @@ func NewUsersHandler(db *sql.DB) *UsersHandler {
 func (h *UsersHandler) RegisterRoutes() *http.ServeMux {
 	r := http.NewServeMux()
 
-	r.HandleFunc("GET /login", middleware.Logging(middleware.RateLimit(h.LoginHandler)))
+	r.HandleFunc("POST /login", middleware.Logging(middleware.RateLimit(h.LoginHandler)))
 	r.HandleFunc("POST /register", middleware.Logging(middleware.RateLimit(h.RegisterHandler)))
 
 	return r
