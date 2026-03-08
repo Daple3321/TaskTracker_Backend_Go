@@ -1,8 +1,10 @@
 package middleware
 
 import (
-	"encoding/json"
+	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -11,33 +13,23 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type User struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 var secretKey = []byte(os.Getenv("JWT_SECRET_KEY"))
 
-type AuthHandler struct {
-}
+type ContextKey string
 
-func NewAuthHandler() *AuthHandler {
-	return &AuthHandler{}
-}
+const ContextUserIdKey ContextKey = "userId"
 
-func (h *AuthHandler) RegisterRoutes() *http.ServeMux {
-	r := http.NewServeMux()
-
-	r.HandleFunc("POST /", LoginHandler)
-
-	return r
-}
-
-func CreateToken(username string, password string) (string, error) {
+func CreateToken(username string, userId int) (string, error) {
+	// sets secretKey for the first time if it was nil
+	if len(secretKey) == 0 {
+		secretKey = []byte(os.Getenv("JWT_SECRET_KEY"))
+		//fmt.Printf("secret key == nil. Getting from env: %s\n", secretKey)
+	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
 		jwt.MapClaims{
 			"username": username,
+			"userId":   userId,
 			"exp":      time.Now().Add(time.Hour * 3).Unix(),
 		})
 
@@ -49,41 +41,37 @@ func CreateToken(username string, password string) (string, error) {
 	return tokenString, nil
 }
 
-func VerifyToken(tokenString string) error {
+func VerifyToken(tokenString string) (int, error) {
+	if len(secretKey) == 0 {
+		secretKey = []byte(os.Getenv("JWT_SECRET_KEY"))
+		//fmt.Printf("secret key == nil. Getting from env: %s\n", secretKey)
+	}
+
 	token, err := jwt.Parse(tokenString,
 		func(token *jwt.Token) (interface{}, error) {
 			return secretKey, nil
 		})
 	if err != nil {
-		return err
+		return 0, err
+	}
+	if token.Method != jwt.SigningMethodHS256 {
+		return 0, errors.New("wrong JWT token signing method")
 	}
 
 	if !token.Valid {
-		return fmt.Errorf("invalid token")
+		return 0, fmt.Errorf("invalid token")
 	}
 
-	return nil
-}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 
-func LoginHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+		if userID, ok := claims["userId"].(float64); ok {
+			return int(userID), nil
+		}
 
-	var u User
-	json.NewDecoder(r.Body).Decode(&u)
-	//fmt.Printf("The user request value %v", u)
-
-	if u.Username == "" || u.Password == "" {
-		http.Error(w, "invalid credentials", http.StatusBadRequest)
-		return
+		return 0, fmt.Errorf("user_id not found or is of invalid type in claims")
 	}
 
-	tokenString, err := CreateToken(u.Username, u.Password)
-	if err != nil {
-		http.Error(w, "error creating token", http.StatusBadRequest)
-	}
-
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, tokenString)
+	return 0, fmt.Errorf("invalid token claims")
 }
 
 func Auth(next http.HandlerFunc) http.HandlerFunc {
@@ -95,11 +83,16 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		err := VerifyToken(tokenString)
+		userId, err := VerifyToken(tokenString)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
+			slog.Info("error creating token", "userId", userId, "err", err)
+			http.Error(w, errors.New("unauthorized").Error(), http.StatusUnauthorized)
 			return
 		}
+
+		// pass new context with added userId key
+		ctx := context.WithValue(r.Context(), ContextUserIdKey, userId)
+		r = r.WithContext(ctx)
 
 		next(w, r)
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -17,6 +18,8 @@ import (
 )
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	logFile, err := SetupLogger()
 	if err != nil {
@@ -40,11 +43,13 @@ func main() {
 		return
 	}
 
-	tasksHandler := handlers.NewHandler(db)
+	go middleware.LimitTimeoutRoutine(ctx)
+
+	tasksHandler := handlers.NewTaskHandler(db)
 	tasksRouter := tasksHandler.RegisterRoutes()
 
-	authHandler := middleware.NewAuthHandler()
-	authRouter := authHandler.RegisterRoutes()
+	usersHandler := handlers.NewUsersHandler(db)
+	authRouter := usersHandler.RegisterRoutes()
 
 	router := http.NewServeMux()
 	router.Handle("/tasks/", http.StripPrefix("/tasks", tasksRouter))

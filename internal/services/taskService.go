@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Daple3321/TaskTracker/internal/entity"
+	"github.com/Daple3321/TaskTracker/internal/middleware"
 	"github.com/Daple3321/TaskTracker/internal/repositories"
 )
 
@@ -36,18 +37,45 @@ func (t *TaskService) TestFunc(ctx context.Context) error {
 	}
 }
 
-func (t *TaskService) GetTasksCount(ctx context.Context) (int, error) {
+func GetUserIdFromCtx(ctx context.Context) (int, error) {
+	userIdVal := ctx.Value(middleware.ContextUserIdKey)
+	if userIdVal == nil {
+		return 0, errors.New("user id not in context")
+	}
+	userId, ok := userIdVal.(int)
+	if !ok {
+		return 0, errors.New("user id invalid type")
+	}
 
-	cnt, err := t.storage.GetTasksCount(ctx)
+	return userId, nil
+}
+
+func (t *TaskService) GetTasksCount(ctx context.Context) (int, error) {
+	userId, err := GetUserIdFromCtx(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	cnt, err := t.storage.GetTasksCount(ctx, userId)
 
 	return cnt, err
 }
 
 func (t *TaskService) GetAllTasks(ctx context.Context) ([]entity.Task, error) {
-	return t.storage.GetAllTasks(ctx)
+	userId, err := GetUserIdFromCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return t.storage.GetAllTasks(ctx, userId)
 }
 
 func (t *TaskService) GetTasksPaginated(ctx context.Context, pageStr string, limitStr string) (*entity.PaginatedResponse, error) {
+
+	userId, err := GetUserIdFromCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	pageStr = strings.TrimSpace(pageStr)
 	if pageStr == "" {
@@ -65,7 +93,7 @@ func (t *TaskService) GetTasksPaginated(ctx context.Context, pageStr string, lim
 		limit = 10 // Default to 10 items per page
 	}
 
-	tasks, err := t.storage.GetTasksPaginated(ctx, page, limit)
+	tasks, err := t.storage.GetTasksPaginated(ctx, userId, page, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -89,12 +117,16 @@ func (t *TaskService) GetTasksPaginated(ctx context.Context, pageStr string, lim
 }
 
 func (t *TaskService) GetTask(ctx context.Context, taskId int) (*entity.Task, error) {
+	userId, err := GetUserIdFromCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	if taskId < 0 {
 		return nil, ErrInvalidTask
 	}
 
-	fetchedTask, err := t.storage.GetTask(ctx, taskId)
+	fetchedTask, err := t.storage.GetTask(ctx, userId, taskId)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +135,10 @@ func (t *TaskService) GetTask(ctx context.Context, taskId int) (*entity.Task, er
 }
 
 func (t *TaskService) AddTask(ctx context.Context, newTask *entity.Task) (int, error) {
+	userId, err := GetUserIdFromCtx(ctx)
+	if err != nil {
+		return 0, err
+	}
 
 	newTask.Name = strings.TrimSpace(newTask.Name)
 	newTask.Description = strings.TrimSpace(newTask.Description)
@@ -110,10 +146,14 @@ func (t *TaskService) AddTask(ctx context.Context, newTask *entity.Task) (int, e
 		return 0, ErrInvalidTask
 	}
 
-	return t.storage.CreateTask(ctx, newTask)
+	return t.storage.CreateTask(ctx, userId, newTask)
 }
 
 func (t *TaskService) UpdateTask(ctx context.Context, id int, updatedTask *entity.Task) (*entity.Task, error) {
+	userId, err := GetUserIdFromCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	updatedTask.Name = strings.TrimSpace(updatedTask.Name)
 	updatedTask.Description = strings.TrimSpace(updatedTask.Description)
@@ -121,9 +161,14 @@ func (t *TaskService) UpdateTask(ctx context.Context, id int, updatedTask *entit
 		return nil, ErrInvalidTask
 	}
 
-	return t.storage.UpdateTask(ctx, id, updatedTask)
+	return t.storage.UpdateTask(ctx, userId, id, updatedTask)
 }
 
 func (t *TaskService) DeleteTask(ctx context.Context, id int) error {
-	return t.storage.DeleteTask(ctx, id)
+	userId, err := GetUserIdFromCtx(ctx)
+	if err != nil {
+		return err
+	}
+
+	return t.storage.DeleteTask(ctx, userId, id)
 }

@@ -8,6 +8,7 @@ type Task struct {
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 	Id          int       `json:"id"`
+	UserId      int       `json:"userId"`
 }
 
 type PaginatedResponse struct {
