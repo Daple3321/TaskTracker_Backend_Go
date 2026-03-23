@@ -1,0 +1,53 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: tasks
+      MYSQL_USER: taskuser
+      MYSQL_PASSWORD: taskpass
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-prootpass"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SERVERPORT: "${SERVERPORT:-8080}"
+      SERVERIP: "${SERVERIP:-0.0.0.0}"
+      FRONTEND_ORIGIN: "${FRONTEND_ORIGIN:-http://localhost:5173}"
+      TASKDB_HOST: mysql
+      TASKDB_USERNAME: "${TASKDB_USERNAME:-taskuser}"
+      TASKDB_PASSWORD: "${TASKDB_PASSWORD:-taskpass}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-dev-secret-key}"
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      VITE_API_URL: "${VITE_API_URL:-http://localhost:8080}"
+    ports:
+      - "5173:5173"
+
+volumes:
+  mysql_data:

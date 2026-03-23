@@ -29,8 +29,7 @@ func main() {
 
 	envPath := filepath.Join("..", "..", "configs", ".env")
 	if err := godotenv.Load(envPath); err != nil {
-		slog.Error("no .env file found at:", "envPath", envPath)
-		return
+		slog.Warn("no .env file found, using process environment", "envPath", envPath)
 	}
 
 	if err := ValidateEnvVars(); err != nil {
@@ -45,11 +44,11 @@ func main() {
 
 	go middleware.LimitTimeoutRoutine(ctx)
 
-	tasksHandler := handlers.NewTaskHandler(db)
-	tasksRouter := tasksHandler.RegisterRoutes()
-
 	usersHandler := handlers.NewUsersHandler(db)
 	authRouter := usersHandler.RegisterRoutes()
+
+	tasksHandler := handlers.NewTaskHandler(db)
+	tasksRouter := tasksHandler.RegisterRoutes()
 
 	router := http.NewServeMux()
 	router.Handle("/tasks/", http.StripPrefix("/tasks", tasksRouter))
@@ -58,8 +57,10 @@ func main() {
 
 	handler := corsMiddleware(router)
 
-	slog.Info("Listening on:", "ip", os.Getenv("SERVERIP"), "port", os.Getenv("SERVERPORT"))
-	err = http.ListenAndServe(os.Getenv("SERVERIP")+":"+os.Getenv("SERVERPORT"), handler)
+	serverIP := getEnv("SERVERIP", "0.0.0.0")
+	serverPort := os.Getenv("SERVERPORT")
+	slog.Info("Listening on:", "ip", serverIP, "port", serverPort)
+	err = http.ListenAndServe(serverIP+":"+serverPort, handler)
 	if err != nil {
 		slog.Error("error starting http server", "err", err)
 	}
@@ -68,7 +69,6 @@ func main() {
 func ValidateEnvVars() error {
 	vars := []string{
 		"SERVERPORT",
-		"SERVERIP",
 		"TASKDB_USERNAME",
 		"TASKDB_PASSWORD",
 		"JWT_SECRET_KEY",
@@ -85,7 +85,7 @@ func ValidateEnvVars() error {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+		w.Header().Set("Access-Control-Allow-Origin", getEnv("FRONTEND_ORIGIN", "http://localhost:5173"))
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
@@ -97,11 +97,12 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 func SetupDB() (*sql.DB, error) {
+	dbHost := getEnv("TASKDB_HOST", "localhost")
 	newDb, err := sql.Open("mysql",
 		fmt.Sprintf("%s:%s@tcp(%s:3306)/tasks?parseTime=true",
 			os.Getenv("TASKDB_USERNAME"),
 			os.Getenv("TASKDB_PASSWORD"),
-			os.Getenv("SERVERIP")))
+			dbHost))
 	if err != nil {
 		slog.Error("error opening database", "err", err)
 		return nil, err
@@ -114,6 +115,14 @@ func SetupDB() (*sql.DB, error) {
 	}
 
 	return newDb, nil
+}
+
+func getEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+
+	return fallback
 }
 
 func SetupLogger() (*os.File, error) {
