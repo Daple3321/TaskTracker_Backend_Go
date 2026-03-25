@@ -17,7 +17,9 @@ FROM alpine:3.22
 WORKDIR /app
 
 COPY --from=builder /app/tasktracker-api ./tasktracker-api
+COPY --from=builder /src/internal/migrations ./migrations
 
+ENV MIGRATIONS_PATH=/app/migrations
 ENV SERVERPORT=8080
 ENV SERVERIP=0.0.0.0
 

@@ -3,27 +3,43 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/Daple3321/TaskTracker/internal/handlers"
 	"github.com/Daple3321/TaskTracker/internal/middleware"
 	"github.com/joho/godotenv"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/mysql"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+
 	_ "github.com/go-sql-driver/mysql"
 )
 
 func main() {
+	if err := run(); err != nil {
+		// Ensure there's always something visible in container logs even if
+		// logging setup fails or the error happens very early.
+		_, _ = fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	logFile, err := SetupLogger()
 	if err != nil {
-		return
+		return fmt.Errorf("setup logger: %w", err)
 	}
 	defer logFile.Close()
 
@@ -34,12 +50,41 @@ func main() {
 
 	if err := ValidateEnvVars(); err != nil {
 		slog.Error("error validating env vars", "err", err)
-		return
+		return fmt.Errorf("validate env vars: %w", err)
 	}
 
 	db, err := SetupDB()
 	if err != nil {
-		return
+		return fmt.Errorf("setup db: %w", err)
+	}
+
+	dir, err := resolveMigrationsDir()
+	if err != nil {
+		slog.Error("migrations path", "err", err)
+		return fmt.Errorf("resolve migrations dir: %w", err)
+	}
+	sourceURL, err := migrationSourceURL(dir)
+	if err != nil {
+		slog.Error("migrations file URL", "err", err)
+		return fmt.Errorf("build migrations URL: %w", err)
+	}
+
+	driver, err := mysql.WithInstance(db, &mysql.Config{})
+	if err != nil {
+		slog.Error("error creating mysql driver", "err", err)
+		return fmt.Errorf("create mysql migrate driver: %w", err)
+	}
+	migrations, err := migrate.NewWithDatabaseInstance(sourceURL, "tasks", driver)
+	if err != nil {
+		slog.Error("error creating migrations", "err", err)
+		return fmt.Errorf("create migrations instance: %w", err)
+	}
+	defer migrations.Close()
+
+	err = migrations.Up()
+	if err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		slog.Error("error running migrations", "err", err)
+		return fmt.Errorf("run migrations: %w", err)
 	}
 
 	go middleware.LimitTimeoutRoutine(ctx)
@@ -60,10 +105,12 @@ func main() {
 	serverIP := getEnv("SERVERIP", "0.0.0.0")
 	serverPort := os.Getenv("SERVERPORT")
 	slog.Info("Listening on:", "ip", serverIP, "port", serverPort)
-	err = http.ListenAndServe(serverIP+":"+serverPort, handler)
-	if err != nil {
+	if err := http.ListenAndServe(serverIP+":"+serverPort, handler); err != nil {
 		slog.Error("error starting http server", "err", err)
+		return fmt.Errorf("http server: %w", err)
 	}
+
+	return nil
 }
 
 func ValidateEnvVars() error {
@@ -96,10 +143,47 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// resolveMigrationsDir returns MIGRATIONS_PATH if set, otherwise the first
+// existing internal/migrations directory relative to the current working directory.
+func resolveMigrationsDir() (string, error) {
+	if d := os.Getenv("MIGRATIONS_PATH"); d != "" {
+		return d, nil
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	candidates := []string{
+		filepath.Join(wd, "internal", "migrations"),
+		filepath.Join(wd, "..", "internal", "migrations"),
+		filepath.Join(wd, "..", "..", "internal", "migrations"),
+	}
+	for _, c := range candidates {
+		fi, err := os.Stat(c)
+		if err == nil && fi.IsDir() {
+			return c, nil
+		}
+	}
+	return "", fmt.Errorf("migrations dir not found under %q; set MIGRATIONS_PATH", wd)
+}
+
+// migrationSourceURL builds a file:// URL golang-migrate accepts on Unix and Windows.
+func migrationSourceURL(dir string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	p := filepath.ToSlash(abs)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return "file://" + p, nil
+}
+
 func SetupDB() (*sql.DB, error) {
 	dbHost := getEnv("TASKDB_HOST", "localhost")
 	newDb, err := sql.Open("mysql",
-		fmt.Sprintf("%s:%s@tcp(%s:3306)/tasks?parseTime=true",
+		fmt.Sprintf("%s:%s@tcp(%s:3306)/tasks?parseTime=true&multiStatements=true",
 			os.Getenv("TASKDB_USERNAME"),
 			os.Getenv("TASKDB_PASSWORD"),
 			dbHost))
@@ -138,7 +222,8 @@ func SetupLogger() (*os.File, error) {
 	opts := slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}
-	logger := slog.New(slog.NewJSONHandler(logFile, &opts))
+	w := io.MultiWriter(os.Stdout, logFile)
+	logger := slog.New(slog.NewJSONHandler(w, &opts))
 	slog.SetDefault(logger)
 
 	return logFile, nil

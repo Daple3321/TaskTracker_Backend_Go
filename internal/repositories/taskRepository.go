@@ -34,19 +34,19 @@ func NewTaskRepository(db *sql.DB) *TaskRepository {
 		db: db,
 	}
 
-	_, err := tr.db.Exec(`
-		CREATE TABLE IF NOT EXISTS tasks (
-			id INT PRIMARY KEY AUTO_INCREMENT, 
-			task_name VARCHAR(45), 
-			task_description VARCHAR(45), 
-			created_at DATETIME, 
-			updated_at DATETIME,
-			user_id INT NOT NULL,
-			FOREIGN KEY (user_id) REFERENCES users(id)
-	);`)
-	if err != nil {
-		slog.Error("error creating tasks table", "err", err)
-	}
+	// _, err := tr.db.Exec(`
+	// 	CREATE TABLE IF NOT EXISTS tasks (
+	// 		id INT PRIMARY KEY AUTO_INCREMENT,
+	// 		task_name VARCHAR(45),
+	// 		task_description VARCHAR(45),
+	// 		created_at DATETIME,
+	// 		updated_at DATETIME,
+	// 		user_id INT NOT NULL,
+	// 		FOREIGN KEY (user_id) REFERENCES users(id)
+	// );`)
+	// if err != nil {
+	// 	slog.Error("error creating tasks table", "err", err)
+	// }
 
 	return &tr
 }
@@ -259,6 +259,8 @@ func (t *TaskRepository) UpdateTask(ctx context.Context, userId int, id int, upd
 }
 
 func (t *TaskRepository) DeleteTask(ctx context.Context, userId int, id int) error {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
 
 	_, err := t.GetTask(ctx, userId, id)
 	if err != nil {

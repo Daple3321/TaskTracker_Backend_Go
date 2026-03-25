@@ -5,6 +5,7 @@ import "time"
 type Task struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
+	Tags        []Tag     `json:"tags"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 	Id          int       `json:"id"`

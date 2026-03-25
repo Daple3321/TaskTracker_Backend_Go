@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 
 	"github.com/Daple3321/TaskTracker/internal/entity"
 	"github.com/go-sql-driver/mysql"
@@ -23,16 +22,16 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 		db: db,
 	}
 
-	_, err := repo.db.Exec(`
-		CREATE TABLE IF NOT EXISTS users (
-			id INT PRIMARY KEY AUTO_INCREMENT, 
-			username VARCHAR(255) UNIQUE NOT NULL,
-			password_hash VARCHAR(255) NOT NULL,
-			created_at DATETIME
-	);`)
-	if err != nil {
-		slog.Error("error creating users table", "err", err)
-	}
+	// _, err := repo.db.Exec(`
+	// 	CREATE TABLE IF NOT EXISTS users (
+	// 		id INT PRIMARY KEY AUTO_INCREMENT,
+	// 		username VARCHAR(255) UNIQUE NOT NULL,
+	// 		password_hash VARCHAR(255) NOT NULL,
+	// 		created_at DATETIME
+	// );`)
+	// if err != nil {
+	// 	slog.Error("error creating users table", "err", err)
+	// }
 
 	return &repo
 }
