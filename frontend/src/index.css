@@ -23,9 +23,7 @@ body {
 
 #root {
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
 }
 
 a {
@@ -88,7 +86,8 @@ button.btn-primary:hover:not(:disabled) {
   color: #fff;
 }
 
-input {
+input,
+textarea {
   font-family: inherit;
   font-size: 1rem;
   padding: 0.5rem 0.75rem;
@@ -97,7 +96,13 @@ input {
   width: 100%;
 }
 
-input:focus {
+textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+input:focus,
+textarea:focus {
   outline: 2px solid #1a1a1a;
   outline-offset: 2px;
 }

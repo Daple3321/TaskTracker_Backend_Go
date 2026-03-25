@@ -45,8 +45,9 @@ func (h *TasksHandler) RegisterRoutes() *http.ServeMux {
 	r.HandleFunc("GET /tags/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.GetAllTags))))
 	r.HandleFunc("POST /tags/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.CreateTag))))
 	r.HandleFunc("DELETE /tags/{tagId}/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.DeleteTag))))
-	r.HandleFunc("POST /{id}/tags/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.AddTagToTask))))
-	r.HandleFunc("DELETE /{id}/tags/{tagId}/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.DeleteTagFromTask))))
+	// Literal "task/" avoids ServeMux conflict with POST /tags/ (/{id}/tags/ would allow id == "tags").
+	r.HandleFunc("POST /task/{id}/tags/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.AddTagToTask))))
+	r.HandleFunc("DELETE /task/{id}/tags/{tagId}/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.DeleteTagFromTask))))
 
 	//r.HandleFunc("GET /test/", middleware.Logging(middleware.Auth(h.TestRoute)))
 

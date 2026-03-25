@@ -7,8 +7,8 @@ CREATE TABLE users (
 
 CREATE TABLE tasks (
     id INT PRIMARY KEY AUTO_INCREMENT,
-    task_name VARCHAR(45),
-    task_description VARCHAR(45),
+    task_name VARCHAR(255),
+    task_description TEXT,
     created_at DATETIME,
     updated_at DATETIME,
     user_id INT NOT NULL,
