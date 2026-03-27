@@ -16,6 +16,7 @@ import (
 	"github.com/Daple3321/TaskTracker/internal/repositories"
 	"github.com/Daple3321/TaskTracker/internal/services"
 	"github.com/Daple3321/TaskTracker/utils"
+	"github.com/redis/go-redis/v9"
 )
 
 const requestTimeout = 3 * time.Second
@@ -24,11 +25,15 @@ type TasksHandler struct {
 	TaskService *services.TaskService
 }
 
-func NewTaskHandler(db *sql.DB) *TasksHandler {
+func NewTaskHandler(db *sql.DB, rdb *redis.Client) *TasksHandler {
 
+	// -- TaskService dependencies --
 	taskRepo := repositories.NewTaskRepository(db)
 	tagsRepo := repositories.NewTagsRepository(db)
-	taskService := services.NewTaskService(taskRepo, tagsRepo)
+	taskCache := repositories.NewTaskCache(rdb)
+	// ------------------------------
+
+	taskService := services.NewTaskService(taskRepo, tagsRepo, taskCache)
 
 	return &TasksHandler{TaskService: taskService}
 }

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -12,19 +13,23 @@ import (
 	"github.com/Daple3321/TaskTracker/internal/repositories"
 )
 
+const cacheTTL = time.Hour * 1
+
 var ErrInvalidTask = errors.New("invalid task")
 var ErrNoPageParameter = errors.New("no page parameter specified")
 
 type TaskService struct {
 	storage     repositories.Repository
 	TagsStorage *repositories.TagsRepository
+	taskCache   *repositories.TaskCache
 }
 
-func NewTaskService(tasksRepo repositories.Repository, tagsRepo *repositories.TagsRepository) *TaskService {
+func NewTaskService(tasksRepo repositories.Repository, tagsRepo *repositories.TagsRepository, taskCache *repositories.TaskCache) *TaskService {
 
 	ts := TaskService{
 		storage:     tasksRepo,
 		TagsStorage: tagsRepo,
+		taskCache:   taskCache,
 	}
 
 	return &ts
@@ -82,6 +87,7 @@ func (t *TaskService) GetAllTasks(ctx context.Context) ([]entity.Task, error) {
 	return result, nil
 }
 
+// TODO: Cache this (hard)
 func (t *TaskService) GetTasksPaginated(ctx context.Context, pageStr string, limitStr string) (*entity.PaginatedResponse, error) {
 
 	userId, err := GetUserIdFromCtx(ctx)
@@ -143,6 +149,23 @@ func (t *TaskService) GetTask(ctx context.Context, taskId int) (*entity.Task, er
 		return nil, ErrInvalidTask
 	}
 
+	cachedTask, found, err := t.taskCache.GetTask(ctx, userId, taskId)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		// fetch tags for task
+		tags, err := t.TagsStorage.GetTagsForTask(ctx, userId, taskId)
+		if err != nil {
+			return nil, err
+		}
+		cachedTask.Tags = tags
+
+		slog.Debug("cache hit for task", "taskId", taskId)
+		return cachedTask, nil
+	}
+
+	// If cache didn't hit -> fetch from db and set cache
 	fetchedTask, err := t.storage.GetTask(ctx, userId, taskId)
 	if err != nil {
 		return nil, err
@@ -154,6 +177,11 @@ func (t *TaskService) GetTask(ctx context.Context, taskId int) (*entity.Task, er
 		return nil, err
 	}
 	fetchedTask.Tags = tags
+
+	err = t.taskCache.SetTask(ctx, fetchedTask, cacheTTL)
+	if err != nil {
+		return nil, err
+	}
 
 	return fetchedTask, nil
 }
@@ -170,13 +198,25 @@ func (t *TaskService) AddTask(ctx context.Context, newTask *entity.Task) (int, e
 		return 0, ErrInvalidTask
 	}
 
+	err = t.taskCache.SetTask(ctx, newTask, cacheTTL)
+	if err != nil {
+		return 0, err
+	}
+
 	return t.storage.CreateTask(ctx, userId, newTask)
 }
 
+// TODO: Make versioned key system to invalidate cache
+// This is made for not using expensive Delete and let it just expire
 func (t *TaskService) UpdateTask(ctx context.Context, id int, updatedTask *entity.Task) (*entity.Task, error) {
 	userId, err := GetUserIdFromCtx(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	err = t.taskCache.DeleteTask(ctx, userId, id)
+	if err != nil {
+		slog.Error("error deleting task from cache", "err", err)
 	}
 
 	updatedTask.Name = strings.TrimSpace(updatedTask.Name)
@@ -186,6 +226,11 @@ func (t *TaskService) UpdateTask(ctx context.Context, id int, updatedTask *entit
 	}
 
 	fetchedTask, err := t.storage.UpdateTask(ctx, userId, id, updatedTask)
+	if err != nil {
+		return nil, err
+	}
+
+	err = t.taskCache.SetTask(ctx, fetchedTask, cacheTTL)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +249,17 @@ func (t *TaskService) DeleteTask(ctx context.Context, id int) error {
 		return err
 	}
 
-	return t.storage.DeleteTask(ctx, userId, id)
+	err = t.taskCache.DeleteTask(ctx, userId, id)
+	if err != nil {
+		slog.Error("error deleting task from cache", "err", err)
+	}
+
+	err = t.storage.DeleteTask(ctx, userId, id)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // TODO: Bad. Making and copying redundant slices

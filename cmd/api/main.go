@@ -15,7 +15,10 @@ import (
 
 	"github.com/Daple3321/TaskTracker/internal/handlers"
 	"github.com/Daple3321/TaskTracker/internal/middleware"
+	"github.com/Daple3321/TaskTracker/internal/repositories"
 	"github.com/joho/godotenv"
+
+	"github.com/redis/go-redis/v9"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/mysql"
@@ -53,6 +56,7 @@ func run() error {
 		return fmt.Errorf("validate env vars: %w", err)
 	}
 
+	// -- DB Setup --
 	db, err := SetupDB()
 	if err != nil {
 		return fmt.Errorf("setup db: %w", err)
@@ -86,13 +90,29 @@ func run() error {
 		slog.Error("error running migrations", "err", err)
 		return fmt.Errorf("run migrations: %w", err)
 	}
+	// ------------------
+
+	// -- Redis setup --
+	redisCfgPath := getEnv("REDIS_CFG_PATH", "/app/configs/redisCfg.yml")
+	redisCfg, err := repositories.LoadRedisConfig(redisCfgPath)
+	if err != nil {
+		slog.Error("error loading redis cfg", "err", err)
+		return fmt.Errorf("error loading redis cfg: %w", err)
+	}
+
+	rdb, err := SetupRedis(ctx, redisCfg)
+	if err != nil {
+		slog.Error("error setting up redis", "err", err)
+		return fmt.Errorf("error setting up redis: %w", err)
+	}
+	// -------------------
 
 	go middleware.LimitTimeoutRoutine(ctx)
 
 	usersHandler := handlers.NewUsersHandler(db)
 	authRouter := usersHandler.RegisterRoutes()
 
-	tasksHandler := handlers.NewTaskHandler(db)
+	tasksHandler := handlers.NewTaskHandler(db, rdb)
 	tasksRouter := tasksHandler.RegisterRoutes()
 
 	router := http.NewServeMux()
@@ -199,6 +219,26 @@ func SetupDB() (*sql.DB, error) {
 	}
 
 	return newDb, nil
+}
+
+func SetupRedis(ctx context.Context, cfg repositories.RedisConfig) (*redis.Client, error) {
+	db := redis.NewClient(&redis.Options{
+		Addr: cfg.Addr,
+		//Username:     cfg.User,
+		//Password:     cfg.Password,
+		DB:           cfg.DB,
+		MaxRetries:   cfg.MaxRetries,
+		DialTimeout:  cfg.DialTimeout,
+		ReadTimeout:  cfg.Timeout,
+		WriteTimeout: cfg.Timeout,
+	})
+
+	if err := db.Ping(ctx).Err(); err != nil {
+		slog.Error("failed to connect to redis server", "err", err)
+		return nil, err
+	}
+
+	return db, nil
 }
 
 func getEnv(key, fallback string) string {
