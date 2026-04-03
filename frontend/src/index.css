@@ -1,0 +1,108 @@
+:root {
+  font-family: "Fraunces", Georgia, serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #1a1a1a;
+  background-color: #ffffff;
+  --primary: #6b8e3d;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+  display: block;
+}
+
+a {
+  font-weight: 500;
+  color: #1a1a1a;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  color: #333;
+}
+
+h1, h2 {
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 2rem;
+}
+
+h2 {
+  font-size: 1.25rem;
+}
+
+button {
+  font-family: inherit;
+  border-radius: 6px;
+  border: 1px solid #1a1a1a;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  font-weight: 500;
+  background: #fff;
+  color: #1a1a1a;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+button:hover:not(:disabled) {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+button.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+input,
+textarea {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  width: 100%;
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+input:focus,
+textarea:focus {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}

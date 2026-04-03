@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Daple3321/TaskTracker/internal/entity"
@@ -15,6 +16,7 @@ import (
 	"github.com/Daple3321/TaskTracker/internal/repositories"
 	"github.com/Daple3321/TaskTracker/internal/services"
 	"github.com/Daple3321/TaskTracker/utils"
+	"github.com/redis/go-redis/v9"
 )
 
 const requestTimeout = 3 * time.Second
@@ -23,10 +25,15 @@ type TasksHandler struct {
 	TaskService *services.TaskService
 }
 
-func NewTaskHandler(db *sql.DB) *TasksHandler {
+func NewTaskHandler(db *sql.DB, rdb *redis.Client) *TasksHandler {
 
+	// -- TaskService dependencies --
 	taskRepo := repositories.NewTaskRepository(db)
-	taskService := services.NewTaskService(taskRepo)
+	tagsRepo := repositories.NewTagsRepository(db)
+	taskCache := repositories.NewTaskCache(rdb)
+	// ------------------------------
+
+	taskService := services.NewTaskService(taskRepo, tagsRepo, taskCache)
 
 	return &TasksHandler{TaskService: taskService}
 }
@@ -39,9 +46,197 @@ func (h *TasksHandler) RegisterRoutes() *http.ServeMux {
 	r.HandleFunc("POST /", middleware.Logging(middleware.RateLimit(middleware.Auth(h.CreateTask))))
 	r.HandleFunc("PUT /{id}/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.UpdateTask))))
 	r.HandleFunc("DELETE /{id}/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.DeleteTask))))
+
+	r.HandleFunc("GET /tags/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.GetAllTags))))
+	r.HandleFunc("POST /tags/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.CreateTag))))
+	r.HandleFunc("DELETE /tags/{tagId}/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.DeleteTag))))
+	// Literal "task/" avoids ServeMux conflict with POST /tags/ (/{id}/tags/ would allow id == "tags").
+	r.HandleFunc("POST /task/{id}/tags/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.AddTagToTask))))
+	r.HandleFunc("DELETE /task/{id}/tags/{tagId}/", middleware.Logging(middleware.RateLimit(middleware.Auth(h.DeleteTagFromTask))))
+
 	//r.HandleFunc("GET /test/", middleware.Logging(middleware.Auth(h.TestRoute)))
 
 	return r
+}
+
+func (h *TasksHandler) GetAllTags(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	userId, err := services.GetUserIdFromCtx(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tags, err := h.TaskService.TagsStorage.GetTagsForUser(ctx, userId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	utils.WriteJSONResponse(w, http.StatusOK, tags)
+}
+
+func (h *TasksHandler) CreateTag(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	userId, err := services.GetUserIdFromCtx(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var tag entity.Tag
+	if err := utils.ParseJSON(r, &tag); err != nil {
+		http.Error(w, fmt.Sprintf("error parsing tag. %s", err), http.StatusBadRequest)
+		return
+	}
+	tag.Name = strings.TrimSpace(tag.Name)
+	if tag.Name == "" {
+		http.Error(w, "tag name is required", http.StatusBadRequest)
+		return
+	}
+
+	existing, err := h.TaskService.TagsStorage.FindTagByName(ctx, userId, tag.Name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if existing != nil {
+		http.Error(w, repositories.ErrTagAlreadyExists.Error(), http.StatusConflict)
+		return
+	}
+
+	tagId, err := h.TaskService.TagsStorage.CreateTag(ctx, userId, tag.Name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tag.Id = tagId
+	tag.UserId = userId
+	utils.WriteJSONResponse(w, http.StatusCreated, tag)
+}
+
+func (h *TasksHandler) DeleteTag(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	userId, err := services.GetUserIdFromCtx(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tagIdStr := r.PathValue("tagId")
+	tagId, err := strconv.Atoi(tagIdStr)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error parsing tag id. %s", err), http.StatusBadRequest)
+		return
+	}
+
+	err = h.TaskService.TagsStorage.DeleteTag(ctx, userId, tagId)
+	if err != nil {
+		if errors.Is(err, repositories.ErrTaskNotFound) {
+			http.Error(w, "tag not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *TasksHandler) AddTagToTask(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	userId, err := services.GetUserIdFromCtx(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	taskIdString := r.PathValue("id")
+	taskId, err := strconv.Atoi(taskIdString)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error parsing task id. %s", err), http.StatusBadRequest)
+		return
+	}
+
+	var tag entity.Tag
+	err = utils.ParseJSON(r, &tag)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error parsing tag. %s", err), http.StatusBadRequest)
+		return
+	}
+
+	tag.Name = strings.TrimSpace(tag.Name)
+	if tag.Name == "" {
+		http.Error(w, "tag name is required", http.StatusBadRequest)
+		return
+	}
+
+	existing, err := h.TaskService.TagsStorage.FindTagByName(ctx, userId, tag.Name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var tagId int
+	if existing != nil {
+		tagId = existing.Id
+	} else {
+		tagId, err = h.TaskService.TagsStorage.CreateTag(ctx, userId, tag.Name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	err = h.TaskService.TagsStorage.SetTagForTask(ctx, userId, taskId, tagId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	utils.WriteJSONResponse(w, http.StatusOK, fmt.Sprintf("Tag {%d} succesfuly added to task {%d}", tagId, taskId))
+}
+
+func (h *TasksHandler) DeleteTagFromTask(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	userId, err := services.GetUserIdFromCtx(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	taskIdString := r.PathValue("id")
+	taskId, err := strconv.Atoi(taskIdString)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error parsing task id. %s", err), http.StatusBadRequest)
+		return
+	}
+
+	tagIdString := r.PathValue("tagId")
+	tagId, err := strconv.Atoi(tagIdString)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error parsing tag id. %s", err), http.StatusBadRequest)
+		return
+	}
+
+	err = h.TaskService.TagsStorage.DeleteTagFromTask(ctx, userId, tagId, taskId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	utils.WriteJSONResponse(w, http.StatusOK, fmt.Sprintf("Tag {%d} succesfuly deleted from task {%d}", tagId, taskId))
 }
 
 func (h *TasksHandler) TestRoute(w http.ResponseWriter, r *http.Request) {
