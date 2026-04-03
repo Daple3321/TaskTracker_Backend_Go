@@ -1,7 +1,7 @@
 # Task Tracker Service
 
-> [!IMPORTANT]
-> For latest version with frontend, docker files and docker compose change to [frontend-branch](https://github.com/Daple3321/TaskTracker_Backend_Go/tree/frontend-branch).
+> [!NOTE]
+> For latest version change to [frontend-branch](https://github.com/Daple3321/TaskTracker_Backend_Go/tree/frontend-branch).
 
 Simple REST API for managing tasks.
 
