@@ -3,9 +3,12 @@
 > [!NOTE]
 > For latest version change to [frontend-branch](https://github.com/Daple3321/TaskTracker_Backend_Go/tree/frontend-branch).
 
+
 Simple REST API for managing tasks.
 
 The service exposes `/tasks` and `/auth` endpoints.
+
+<img width="2559" height="1261" alt="image" src="https://github.com/user-attachments/assets/1df3f385-8ca6-43fd-bded-c1749a72ee43" />
 
 ## Routes
 
